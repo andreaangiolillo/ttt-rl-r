@@ -85,8 +85,126 @@ fn init_nn() -> NeuralNetwork {
     return nn;
 }
 
-fn play_random_game() -> char {
+/// Get a random valid move, this is used for training
+/// against a random opponent. Note: this function will loop forever
+/// if the board is full, but here we want simple code.
+fn play_random_move(state: &GameState) -> usize {
+    let mut rng = rand::rng();
+    let mut move_random: usize = 0;
+    while true {
+        move_random = (rng.random::<u8>() % 9) as usize;
+        if state.board[move_random] == '.' {
+            return move_random;
+        }
+    }
+    return move_random;
+}
+
+/* Play a game against random moves and learn from it.
+ *
+ * This is a very simple Montecarlo Method applied to reinforcement
+ * learning:
+ *
+ * 1. We play a complete random game (episode).
+ * 2. We determine the reward based on the outcome of the game.
+ * 3. We update the neural network in order to maximize future rewards.
+ *
+ * LEARNING OPPORTUNITY: while the code uses some Montecarlo-alike
+ * technique, important results were recently obtained using
+ * Montecarlo Tree Search (MCTS), where a tree structure represents
+ * potential future game states that are explored according to
+ * some selection: you may want to learn about it. */
+fn play_random_game(nn: &NeuralNetwork, move_history: [char; 9]) -> char {
+    let mut state: GameState = GameState {
+        board: ['.'; BOARD_SIZE],
+        current_player: false,
+    };
+
+    let mut winner: char = '.';
+    let mut num_moves: u32 = 0;
+    let mut move_round: u16;
+    while !is_game_over(&state, &mut winner) {
+        if state.current_player {
+            // Neural Network Move
+            println!("NN Move!!!")
+        } else {
+            // human move -> get a random valid move
+            let h_move = play_random_move(&state);
+            println!("Human Move!!! (random): {}", h_move);
+            state.board[h_move] = 'X';
+        }
+
+        println!("END TURN! Board:");
+        for i in 0..9 {
+            println!("i: {}, value: {}", i, state.board[i]);
+        }
+        println!("\n");
+    }
+
     return 'O';
+}
+
+/// is_game_over checks if a specific state is game over for the tic tac toe game.
+/// We have a game over in the following scenarios:
+/// 1) All the elemens in a row are "O" (or "X").
+/// 2) All the elements in a column are "O" (or "X").
+/// 3) All the elements in a diagonal are "O" (or "X").
+fn is_game_over(state: &GameState, winner: &mut char) -> bool {
+    // Check the rows
+    for i in 0..3 {
+        if state.board[i * 3] == '.' {
+            continue;
+        }
+
+        if state.board[i * 3] == state.board[(i * 3) + 1]
+            && state.board[(i * 3) + 1] == state.board[(i * 3) + 2]
+        {
+            *winner = state.board[i * 3];
+            return true;
+        }
+    }
+
+    // check the columns
+    for i in 0..3 {
+        if state.board[i] == '.' {
+            continue;
+        }
+
+        if state.board[i] == state.board[i + 3] && state.board[i + 3] == state.board[i + 6] {
+            *winner = state.board[i];
+            return true;
+        }
+    }
+
+    // check the diagonals
+    if state.board[4] == '.' {
+        return false;
+    }
+
+    if state.board[0] == state.board[4] && state.board[4] == state.board[8] {
+        *winner = state.board[0];
+        return true;
+    }
+
+    if state.board[2] == state.board[4] && state.board[4] == state.board[6] {
+        *winner = state.board[2];
+        return true;
+    }
+
+    // Check for tie (no free tiles left).
+    let mut empty_tiles: u8 = 0;
+    for i in 0..9 {
+        if state.board[i] == '.' {
+            empty_tiles += 1
+        }
+    }
+
+    if empty_tiles == 0 {
+        *winner = 'T'; // Tie
+        return true;
+    }
+
+    return false;
 }
 
 /// Train the neural network against random moves.
@@ -103,7 +221,7 @@ fn train_against_random(nn: &NeuralNetwork, num_games: u32) {
 
     let mut played_games = 0;
     for i in 0..num_games {
-        let winner = play_random_game();
+        let winner = play_random_game(nn, move_history);
         played_games += 1;
 
         if winner == 'O' {
@@ -135,7 +253,7 @@ fn train_against_random(nn: &NeuralNetwork, num_games: u32) {
 }
 
 fn main() {
-    let random_games: u32 = 150000;
+    let random_games: u32 = 1;
 
     // Init Game State.
     let game_state = GameState {
@@ -144,15 +262,14 @@ fn main() {
     };
 
     // Init NN.
-    let mut nn = init_nn();
+    let nn = init_nn();
 
     // Train the NN.
     if random_games > 0 {
         train_against_random(&nn, random_games);
     }
 
-    let mut rng = rand::rng();
-
+    // let mut rng = rand::rng();
     // Print text to the console.
     // for i in 1..100{
     //     println!("Hello World! {}", rng.random::<f64>());
