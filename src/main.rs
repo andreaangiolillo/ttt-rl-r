@@ -85,6 +85,73 @@ fn init_nn() -> NeuralNetwork {
     return nn;
 }
 
+/// Convert board state to neural network inputs. Note that we use
+/// a peculiar encoding I descrived here:
+/// https://www.youtube.com/watch?v=EXbgUXt8fFU
+///
+/// Instead of one-hot encoding, we can represent N different categories
+/// as different bit patterns. In this specific case it's trivial:
+///
+/// 00 = empty
+/// 10 = X
+/// 01 = O
+///
+/// Two inputs per symbol instead of 3 in this case, but in the general case
+/// this reduces the input dimensionality A LOT.
+///
+/// LEARNING OPPORTUNITY: You may want to learn (if not already aware) of
+/// different ways to represent non scalar inputs in neural networks:
+/// One hot encoding, learned embeddings, and even if it's just my random
+/// exeriment this "permutation coding" that I'm using here.
+///
+fn board_to_inputs(state: &GameState, inputs: &mut [f64; NN_INPUT_SIZE]) {
+    for i in 0..9 {
+        if state.board[i] == '.' {
+            inputs[i * 2] = 0.0;
+            inputs[(i * 2) + 1] = 0.0;
+        } else if state.board[i] == 'X' {
+            inputs[i * 2] = 1.0;
+            inputs[(i * 2) + 1] = 0.0;
+        } else {
+            inputs[i * 2] = 0.0;
+            inputs[(i * 2) + 1] = 1.0;
+        }
+    }
+}
+
+fn forward_pass(nn: &NeuralNetwork, inputs:[f64; NN_INPUT_SIZE]) {
+
+}
+
+/// Get the best move computer move using the neural network.
+/// Note that there is no complex sampling at all, we just get
+/// the output with the highest value that has an empty tile.
+fn play_computer_move(state: &GameState, nn: &NeuralNetwork, display_move: bool) -> usize {
+    let mut inputs = [0.0; NN_INPUT_SIZE];
+
+    board_to_inputs(state, &mut inputs);
+    // println!("\ninputs:");
+    // for i in 0..18 {
+    //     if (i % 2) == 0 {
+    //         println!("{} {}", inputs[i], inputs[i+1] )
+    //     }
+    // }
+
+    forward_pass(nn, inputs);
+
+    let mut move_random: usize = 0;
+    // let mut rng = rand::rng();
+    // let mut move_random: usize = 0;
+    // while true {
+    //     move_random = (rng.random::<u8>() % 9) as usize;
+    //     if state.board[move_random] == '.' {
+    //         return move_random;
+    //     }
+    // }
+    // return move_random;
+    return move_random;
+}
+
 /// Get a random valid move, this is used for training
 /// against a random opponent. Note: this function will loop forever
 /// if the board is full, but here we want simple code.
@@ -126,7 +193,9 @@ fn play_random_game(nn: &NeuralNetwork, move_history: [char; 9]) -> char {
     while !is_game_over(&state, &mut winner) {
         if state.current_player {
             // Neural Network Move
-            println!("NN Move!!!")
+            let h_move = play_computer_move(&state, nn, true);
+            println!("NN Move!!!: {}", h_move);
+            state.board[h_move] = 'O';
         } else {
             // human move -> get a random valid move
             let h_move = play_random_move(&state);
@@ -134,11 +203,21 @@ fn play_random_game(nn: &NeuralNetwork, move_history: [char; 9]) -> char {
             state.board[h_move] = 'X';
         }
 
-        println!("END TURN! Board:");
-        for i in 0..9 {
-            println!("i: {}, value: {}", i, state.board[i]);
-        }
+        println!("\nEND TURN! Board:");
+        println!(
+            "{} {} {}\n{} {} {}\n{} {} {}",
+            state.board[0],
+            state.board[1],
+            state.board[2],
+            state.board[3],
+            state.board[4],
+            state.board[5],
+            state.board[6],
+            state.board[7],
+            state.board[8]
+        );
         println!("\n");
+        state.current_player = !state.current_player
     }
 
     return 'O';
