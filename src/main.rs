@@ -1,3 +1,4 @@
+use libm::exp;
 use rand::Rng;
 
 /// Neural network parameters.
@@ -119,14 +120,72 @@ fn board_to_inputs(state: &GameState, inputs: &mut [f64; NN_INPUT_SIZE]) {
     }
 }
 
-fn forward_pass(nn: &NeuralNetwork, inputs:[f64; NN_INPUT_SIZE]) {
+/// Neural network foward pass (inference). We store the activations
+/// so we can also do backpropagation later.
+fn forward_pass(nn: &mut NeuralNetwork, inputs: [f64; NN_INPUT_SIZE]) {
+    nn.inputs = inputs;
 
+    // Input to hidden layer.
+    let mut sum = 0.0;
+    for i in 0..NN_HIDDEN_SIZE {
+        sum = nn.biases_h[i];
+        for j in 0..NN_INPUT_SIZE {
+            sum += inputs[j] * nn.weights_ih[j * NN_HIDDEN_SIZE + i];
+        }
+        nn.hidden[i] = relu(sum);
+    }
+
+    // Hidden to output (raw logits).
+    for i in 0..NN_OUTPUT_SIZE {
+        nn.raw_logits[i] = nn.biases_o[i];
+        for j in 0..NN_HIDDEN_SIZE {
+            nn.raw_logits[i] += nn.hidden[i] * nn.weights_ho[j * NN_OUTPUT_SIZE + i];
+        }
+    }
+
+    // Apply softmax to get the final probabilities.
+    softmax(nn);
+}
+
+fn softmax(nn: &mut NeuralNetwork) {
+    let mut inputs = nn.inputs; // logits
+    
+    // Note: Softmax uses e(zj) which can overflow for big zj. To avoid this issue, we first find the max(zj) in inputs,
+    // then we subtract max(zj) from all in z
+    
+    // Find the max input
+    let mut m = inputs[0];
+    for i in 1..NN_OUTPUT_SIZE {
+        if inputs[i] > m {
+            m = inputs[i];
+        }
+    }
+
+    // Subtract m from the inputs.
+    let mut sum_exp = 0.0; // to use for softmax
+    for i in 0..NN_OUTPUT_SIZE {
+        inputs[i] -= m;
+        sum_exp += libm::exp(inputs[i]);
+    }
+
+    if sum_exp > 0.0 {
+        // Calculate SoftMax
+        for i in 0..NN_OUTPUT_SIZE {
+            nn.outputs[i] = libm::exp(inputs[i]) / sum_exp;
+        }
+    } else {
+        // Fallback in case of numerical issues, just provide
+        // a uniform distribution.
+        for i in 0..NN_OUTPUT_SIZE {
+            nn.outputs[i] = 1.0 / (NN_OUTPUT_SIZE as f64);
+        }
+    }
 }
 
 /// Get the best move computer move using the neural network.
 /// Note that there is no complex sampling at all, we just get
 /// the output with the highest value that has an empty tile.
-fn play_computer_move(state: &GameState, nn: &NeuralNetwork, display_move: bool) -> usize {
+fn play_computer_move(state: &GameState, nn: &mut NeuralNetwork, display_move: bool) -> usize {
     let mut inputs = [0.0; NN_INPUT_SIZE];
 
     board_to_inputs(state, &mut inputs);
@@ -136,20 +195,60 @@ fn play_computer_move(state: &GameState, nn: &NeuralNetwork, display_move: bool)
     //         println!("{} {}", inputs[i], inputs[i+1] )
     //     }
     // }
-
     forward_pass(nn, inputs);
 
-    let mut move_random: usize = 0;
-    // let mut rng = rand::rng();
-    // let mut move_random: usize = 0;
-    // while true {
-    //     move_random = (rng.random::<u8>() % 9) as usize;
-    //     if state.board[move_random] == '.' {
-    //         return move_random;
-    //     }
-    // }
-    // return move_random;
-    return move_random;
+    // Find the highest probability value and best legal move.
+    let mut highest_prob: f64 = -1.0;
+    let mut highest_prob_idx: i8 = -1;
+    let mut best_move: i8 = -1;
+    let mut best_legal_prob: f64 = -1.0;
+
+    for i in 0..NN_OUTPUT_SIZE {
+        // Track highest probability overall.
+        if nn.outputs[i] > highest_prob {
+            highest_prob = nn.outputs[i];
+            highest_prob_idx = i as i8;
+        }
+
+        // Track best legal move.
+        if state.board[i] == '.' && (best_move == -1 || nn.outputs[i] > best_legal_prob) {
+            best_move = i as i8;
+            best_legal_prob = nn.outputs[i];
+        }
+    }
+
+    if display_move {
+        print!("Neural network move probabilities:\n");
+        let mut pos = 0;
+        for row in 0..3 {
+            for col in 0..3 {
+                pos = row * 3 + col;
+
+                // Print probability as percentage.
+                print!("{:.1}%", nn.outputs[pos] * 100.0);
+
+                // Add markers.
+                if (pos as i8) == highest_prob_idx {
+                    print!("*"); // Highest probability overall.
+                }
+                if (pos as i8) == best_move {
+                    print!("#"); // Selected move (highest valid probability).
+                }
+                print!(" ");
+            }
+            println!("");
+        }
+    }
+
+    // Sum of probabilities should be 1.0, hopefully.
+    // Just debugging.
+    let mut tot_prob = 0.0;
+    for i in 0..NN_OUTPUT_SIZE {
+        tot_prob += nn.outputs[i];
+    }
+    println!("\nSum of all probabilities: {:.2}\n", tot_prob);
+
+    return best_move as usize;
 }
 
 /// Get a random valid move, this is used for training
@@ -181,24 +280,26 @@ fn play_random_move(state: &GameState) -> usize {
  * Montecarlo Tree Search (MCTS), where a tree structure represents
  * potential future game states that are explored according to
  * some selection: you may want to learn about it. */
-fn play_random_game(nn: &NeuralNetwork, move_history: [char; 9]) -> char {
+fn play_random_game(nn: &mut NeuralNetwork) -> char {
     let mut state: GameState = GameState {
         board: ['.'; BOARD_SIZE],
         current_player: false,
     };
 
     let mut winner: char = '.';
-    let mut num_moves: u32 = 0;
     let mut move_round: u16;
+    let mut move_history: [usize; 9] = [0; 9];
+    let mut num_moves: usize = 0;
+    let mut h_move:usize = 0;
     while !is_game_over(&state, &mut winner) {
         if state.current_player {
             // Neural Network Move
-            let h_move = play_computer_move(&state, nn, true);
+            h_move = play_computer_move(&state, nn, true);
             println!("NN Move!!!: {}", h_move);
             state.board[h_move] = 'O';
         } else {
             // human move -> get a random valid move
-            let h_move = play_random_move(&state);
+            h_move = play_random_move(&state);
             println!("Human Move!!! (random): {}", h_move);
             state.board[h_move] = 'X';
         }
@@ -217,10 +318,39 @@ fn play_random_game(nn: &NeuralNetwork, move_history: [char; 9]) -> char {
             state.board[8]
         );
         println!("\n");
+
+        // Store the move: we need the moves sequence
+        // during the learning stage.
+        move_history[num_moves] = h_move;
+        num_moves += 1;
+
+        // switch player
         state.current_player = !state.current_player
     }
 
-    return 'O';
+    println!("\nnum_moves: {}, Move History:", num_moves);
+    for i in 0..9 {
+        print!("{} ", move_history[i])
+    }
+
+    return winner;
+}
+
+/// Train the neural network based on game outcome.
+///
+/// The move_history is just an integer array with the index of all the
+/// moves. This function is designed so that you can specify if the
+/// game was started by the move by the NN or human, but actually the
+/// code always let the human move first.
+fn learn_from_game(nn: &mut NeuralNetwork, move_history: &[usize; 9], num_moves: &usize, nn_moves_even: u8, winner: char) {
+    
+}
+
+
+
+
+fn back_propagation(nn: &mut NeuralNetwork, move_history: &[usize; 9], num_moves: &usize){
+
 }
 
 /// is_game_over checks if a specific state is game over for the tic tac toe game.
@@ -287,20 +417,19 @@ fn is_game_over(state: &GameState, winner: &mut char) -> bool {
 }
 
 /// Train the neural network against random moves.
-fn train_against_random(nn: &NeuralNetwork, num_games: u32) {
+fn train_against_random(nn: &mut NeuralNetwork, num_games: u32) {
     println!(
         "\nTraining neural network against {} random games...",
         num_games
     );
 
-    let mut move_history: [char; 9] = ['.'; 9];
     let mut wins: u32 = 0;
     let mut losses: u32 = 0;
     let mut ties: u32 = 0;
-
     let mut played_games = 0;
+
     for i in 0..num_games {
-        let winner = play_random_game(nn, move_history);
+        let winner = play_random_game(nn);
         played_games += 1;
 
         if winner == 'O' {
@@ -341,11 +470,11 @@ fn main() {
     };
 
     // Init NN.
-    let nn = init_nn();
+    let mut nn = init_nn();
 
     // Train the NN.
     if random_games > 0 {
-        train_against_random(&nn, random_games);
+        train_against_random(&mut nn, random_games);
     }
 
     // let mut rng = rand::rng();
