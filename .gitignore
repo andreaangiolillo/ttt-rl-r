@@ -1,2 +1,4 @@
 *target/debug/*
 bin/**
+target/.rustc_info.json
+target/CACHEDIR.TAG
