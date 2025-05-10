@@ -285,10 +285,9 @@ fn play_random_game(nn: &mut NeuralNetwork) -> char {
     };
 
     let mut winner: char = '.';
-    let mut move_round: u16;
     let mut move_history: [usize; 9] = [0; 9];
     let mut num_moves: usize = 0;
-    let mut h_move: usize = 0;
+    let mut h_move: usize;
     while !is_game_over(&state, &mut winner) {
         if state.current_player {
             // Neural Network Move
