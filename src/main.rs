@@ -1,4 +1,3 @@
-use libm::exp;
 use rand::Rng;
 
 /// Neural network parameters.
@@ -6,7 +5,7 @@ const NN_INPUT_SIZE: usize = 18;
 const NN_HIDDEN_SIZE: usize = 100;
 const NN_OUTPUT_SIZE: usize = 9;
 const BOARD_SIZE: usize = 9;
-const LEARNING_RATE: f32 = 0.01;
+const LEARNING_RATE: f64 = 0.1;
 
 /// Game board structure.
 struct GameState {
@@ -50,8 +49,8 @@ fn relu_derivative(x: f64) -> f64 {
 
 /// random_weight returns a random float number to be used to initialize the NN weights.
 fn random_weight() -> f64 {
-    let mut rng = rand::rng();
-    return rng.random::<f64>();
+    let mut rng = rand::thread_rng();
+    rng.r#gen::<f64>() - 0.5
 }
 
 /// Initialize the NN
@@ -87,7 +86,7 @@ fn init_nn() -> NeuralNetwork {
 }
 
 /// Convert board state to neural network inputs. Note that we use
-/// a peculiar encoding I descrived here:
+/// a peculiar encoding antirez descrived here:
 /// https://www.youtube.com/watch?v=EXbgUXt8fFU
 ///
 /// Instead of one-hot encoding, we can represent N different categories
@@ -126,7 +125,7 @@ fn forward_pass(nn: &mut NeuralNetwork, inputs: [f64; NN_INPUT_SIZE]) {
     nn.inputs = inputs;
 
     // Input to hidden layer.
-    let mut sum = 0.0;
+    let mut sum: f64;
     for i in 0..NN_HIDDEN_SIZE {
         sum = nn.biases_h[i];
         for j in 0..NN_INPUT_SIZE {
@@ -139,7 +138,7 @@ fn forward_pass(nn: &mut NeuralNetwork, inputs: [f64; NN_INPUT_SIZE]) {
     for i in 0..NN_OUTPUT_SIZE {
         nn.raw_logits[i] = nn.biases_o[i];
         for j in 0..NN_HIDDEN_SIZE {
-            nn.raw_logits[i] += nn.hidden[i] * nn.weights_ho[j * NN_OUTPUT_SIZE + i];
+            nn.raw_logits[i] += nn.hidden[j] * nn.weights_ho[j * NN_OUTPUT_SIZE + i];
         }
     }
 
@@ -148,11 +147,11 @@ fn forward_pass(nn: &mut NeuralNetwork, inputs: [f64; NN_INPUT_SIZE]) {
 }
 
 fn softmax(nn: &mut NeuralNetwork) {
-    let mut inputs = nn.inputs; // logits
-    
+    let mut inputs = nn.raw_logits; // logits
+
     // Note: Softmax uses e(zj) which can overflow for big zj. To avoid this issue, we first find the max(zj) in inputs,
     // then we subtract max(zj) from all in z
-    
+
     // Find the max input
     let mut m = inputs[0];
     for i in 1..NN_OUTPUT_SIZE {
@@ -189,10 +188,10 @@ fn play_computer_move(state: &GameState, nn: &mut NeuralNetwork, display_move: b
     let mut inputs = [0.0; NN_INPUT_SIZE];
 
     board_to_inputs(state, &mut inputs);
-    // println!("\ninputs:");
+    // println!("\ninputs:\n");
     // for i in 0..18 {
     //     if (i % 2) == 0 {
-    //         println!("{} {}", inputs[i], inputs[i+1] )
+    //         println!("{} {}", inputs[i], inputs[i+1]);
     //     }
     // }
     forward_pass(nn, inputs);
@@ -246,7 +245,7 @@ fn play_computer_move(state: &GameState, nn: &mut NeuralNetwork, display_move: b
     for i in 0..NN_OUTPUT_SIZE {
         tot_prob += nn.outputs[i];
     }
-    println!("\nSum of all probabilities: {:.2}\n", tot_prob);
+    // println!("\nSum of all probabilities: {:.2}\n", tot_prob);
 
     return best_move as usize;
 }
@@ -258,7 +257,8 @@ fn play_random_move(state: &GameState) -> usize {
     let mut rng = rand::rng();
     let mut move_random: usize = 0;
     while true {
-        move_random = (rng.random::<u8>() % 9) as usize;
+        let mut rng = rand::thread_rng();
+        move_random = rng.gen_range(0..9);
         if state.board[move_random] == '.' {
             return move_random;
         }
@@ -290,34 +290,19 @@ fn play_random_game(nn: &mut NeuralNetwork) -> char {
     let mut move_round: u16;
     let mut move_history: [usize; 9] = [0; 9];
     let mut num_moves: usize = 0;
-    let mut h_move:usize = 0;
+    let mut h_move: usize = 0;
     while !is_game_over(&state, &mut winner) {
         if state.current_player {
             // Neural Network Move
-            h_move = play_computer_move(&state, nn, true);
-            println!("NN Move!!!: {}", h_move);
+            h_move = play_computer_move(&state, nn, false);
+            // println!("NN Move!!!: {}", h_move);
             state.board[h_move] = 'O';
         } else {
             // human move -> get a random valid move
             h_move = play_random_move(&state);
-            println!("Human Move!!! (random): {}", h_move);
+            // println!("Human Move!!! (random): {}", h_move);
             state.board[h_move] = 'X';
         }
-
-        println!("\nEND TURN! Board:");
-        println!(
-            "{} {} {}\n{} {} {}\n{} {} {}",
-            state.board[0],
-            state.board[1],
-            state.board[2],
-            state.board[3],
-            state.board[4],
-            state.board[5],
-            state.board[6],
-            state.board[7],
-            state.board[8]
-        );
-        println!("\n");
 
         // Store the move: we need the moves sequence
         // during the learning stage.
@@ -328,10 +313,12 @@ fn play_random_game(nn: &mut NeuralNetwork) -> char {
         state.current_player = !state.current_player
     }
 
-    println!("\nnum_moves: {}, Move History:", num_moves);
-    for i in 0..9 {
-        print!("{} ", move_history[i])
-    }
+    // println!("\nnum_moves: {}, Move History:", num_moves);
+    // for i in 0..9 {
+    //     print!("{} ", move_history[i])
+    // }
+
+    learn_from_game(nn, &move_history, &num_moves, true, winner);
 
     return winner;
 }
@@ -342,15 +329,157 @@ fn play_random_game(nn: &mut NeuralNetwork) -> char {
 /// moves. This function is designed so that you can specify if the
 /// game was started by the move by the NN or human, but actually the
 /// code always let the human move first.
-fn learn_from_game(nn: &mut NeuralNetwork, move_history: &[usize; 9], num_moves: &usize, nn_moves_even: u8, winner: char) {
-    
+fn learn_from_game(
+    nn: &mut NeuralNetwork,
+    move_history: &[usize; 9],
+    num_moves: &usize,
+    nn_moves_even: bool,
+    winner: char,
+) {
+    let mut reward = 0.0;
+    let mut nn_symbol: char = 'X';
+    if nn_moves_even {
+        // NN started first
+        nn_symbol = 'O';
+    }
+
+    if winner == 'T' {
+        reward = 0.3; // Small reward for draw
+    } else if winner == nn_symbol {
+        reward = 1.0; // Large reward for win
+    } else {
+        reward = -2.0; // Negative reward for loss
+    }
+
+    let mut target_probs = [0.0; NN_OUTPUT_SIZE];
+    // println!("\n\nWinner: {}", winner);
+    // Process each move the nn made.
+    for move_idx in 0..*num_moves {
+        if (nn_moves_even && move_idx % 2 != 1) || (!nn_moves_even && move_idx % 2 != 0) {
+            continue;
+        }
+
+        // Recreate board state BEFORE this move was made.
+        let mut state = GameState {
+            board: ['.'; BOARD_SIZE], // We use '.' to identify an empty cell.
+            current_player: false,
+        };
+        let mut symbol;
+        for i in 0..move_idx {
+            if i % 2 == 0 {
+                symbol = 'X'
+            } else {
+                symbol = 'O'
+            }
+
+            state.board[move_history[i]] = symbol;
+        }
+
+        // Convert board to inputs and do forward pass.
+        let mut inputs = [0.0; NN_INPUT_SIZE];
+        board_to_inputs(&state, &mut inputs);
+        forward_pass(nn, inputs);
+
+        let current_move = move_history[move_idx];
+        let move_importance = 0.5 + 0.5 * (move_idx as f64 / *num_moves as f64);
+        let scaled_reward = (reward * move_importance) as f32;
+
+        for i in 0..NN_OUTPUT_SIZE {
+            target_probs[i] = 0.0;
+        }
+
+        // Set the target for the chosen move based on reward:
+        if scaled_reward >= 0.0 {
+            // For positive reward, set probability of the chosen move to
+            // 1, with all the rest set to 0.
+            target_probs[current_move] = 1.0;
+        } else {
+            // For negative reward, distribute probability to OTHER
+            // valid moves, which is conceptually the same as discouraging
+            // the move that we want to discourage.
+            let valid_moves_left = (9 - move_idx - 1) as f64;
+            let other_prob = 1.0 / valid_moves_left;
+            for i in 0..BOARD_SIZE {
+                if state.board[i] == '.' && i != current_move {
+                    target_probs[i] = other_prob;
+                }
+            }
+        }
+
+        backprop(nn, &target_probs, LEARNING_RATE, scaled_reward);
+    }
 }
 
+/// Backpropagation function.
+/// The only difference here from vanilla backprop is that we have
+/// a 'reward_scaling' argument that makes the output error more/less
+/// dramatic, so that we can adjust the weights proportionally to the
+/// reward we want to provide. */
+fn backprop(
+    nn: &mut NeuralNetwork,
+    target_probs: &[f64; NN_OUTPUT_SIZE],
+    learning_rate: f64,
+    reward_scaling: f32,
+) {
+    let mut output_deltas: [f64; NN_OUTPUT_SIZE] = [0.0; NN_OUTPUT_SIZE];
+    let mut hidden_deltas: [f64; NN_HIDDEN_SIZE] = [0.0; NN_HIDDEN_SIZE];
 
+    // === STEP 1: Compute deltas ===
 
+    // Calculate output layer deltas:
+    // Note what's going on here: we are technically using softmax
+    // as output function and cross entropy as loss, but we never use
+    // cross entropy in practice since we check the progresses in terms
+    // of winning the game.
+    //
+    // Still calculating the deltas in the output as:
+    //
+    //      output[i] - target[i]
+    //
+    // Is exactly what happens if you derivate the deltas with
+    // softmax and cross entropy.
+    //
+    // LEARNING OPPORTUNITY: This is a well established and fundamental
+    // result in neural networks, you may want to read more about it.
+    for i in 0..NN_OUTPUT_SIZE {
+        output_deltas[i] = (nn.outputs[i] - target_probs[i]) * (libm::fabsf(reward_scaling) as f64);
+        // println!("{}", output_deltas[i]);
+    }
 
-fn back_propagation(nn: &mut NeuralNetwork, move_history: &[usize; 9], num_moves: &usize){
+    // Backpropagate error to hidden layer.
+    for i in 0..NN_HIDDEN_SIZE {
+        let mut error: f64 = 0.0;
+        for j in 0..NN_OUTPUT_SIZE {
+            error += output_deltas[j] * nn.weights_ho[i * NN_OUTPUT_SIZE + j];
+        }
+        hidden_deltas[i] = error * relu_derivative(nn.hidden[i]);
+    }
 
+    // === STEP 2: Weights updating ===
+
+    // Output layer weights and biases.
+    for i in 0..NN_HIDDEN_SIZE {
+        for j in 0..NN_OUTPUT_SIZE {
+            nn.weights_ho[i * NN_OUTPUT_SIZE + j] -=
+                learning_rate * output_deltas[j] * nn.hidden[i];
+        }
+    }
+
+    for j in 0..NN_OUTPUT_SIZE {
+        nn.biases_o[j] -= learning_rate * output_deltas[j];
+    }
+
+    // Hidden layer weights and biases.
+    for i in 0..NN_INPUT_SIZE {
+        for j in 0..NN_HIDDEN_SIZE {
+            nn.weights_ih[i * NN_HIDDEN_SIZE + j] -=
+                learning_rate * hidden_deltas[j] * nn.inputs[i];
+        }
+    }
+
+    for j in 0..NN_HIDDEN_SIZE {
+        nn.biases_h[j] -= learning_rate * hidden_deltas[j];
+    }
 }
 
 /// is_game_over checks if a specific state is game over for the tic tac toe game.
@@ -441,7 +570,7 @@ fn train_against_random(nn: &mut NeuralNetwork, num_games: u32) {
         }
 
         // Print training stats on the console.
-        if ((i + 1) % 10000) == 0 {
+        if ((i + 1) % 1000) == 0 {
             println!(
                 "Games: {}, Wins: {} ({:.1}%), Losses: {} ({:.1})%, Ties: {} ({:.1}%)",
                 i + 1,
@@ -452,6 +581,7 @@ fn train_against_random(nn: &mut NeuralNetwork, num_games: u32) {
                 ties,
                 (ties as f32 / played_games as f32) * 100.0
             );
+
             played_games = 0;
             wins = 0;
             losses = 0;
@@ -461,7 +591,7 @@ fn train_against_random(nn: &mut NeuralNetwork, num_games: u32) {
 }
 
 fn main() {
-    let random_games: u32 = 1;
+    let random_games: u32 = 150000;
 
     // Init Game State.
     let game_state = GameState {
@@ -476,10 +606,4 @@ fn main() {
     if random_games > 0 {
         train_against_random(&mut nn, random_games);
     }
-
-    // let mut rng = rand::rng();
-    // Print text to the console.
-    // for i in 1..100{
-    //     println!("Hello World! {}", rng.random::<f64>());
-    // }
 }
