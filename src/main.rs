@@ -1,4 +1,6 @@
 use rand::Rng;
+use std::env;
+use std::io::{self, BufRead};
 
 /// Neural network parameters.
 const NN_INPUT_SIZE: usize = 18;
@@ -241,10 +243,10 @@ fn play_computer_move(state: &GameState, nn: &mut NeuralNetwork, display_move: b
 
     // Sum of probabilities should be 1.0, hopefully.
     // Just debugging.
-    let mut tot_prob = 0.0;
-    for i in 0..NN_OUTPUT_SIZE {
-        tot_prob += nn.outputs[i];
-    }
+    // let mut tot_prob = 0.0;
+    // for i in 0..NN_OUTPUT_SIZE {
+    //     tot_prob += nn.outputs[i];
+    // }
     // println!("\nSum of all probabilities: {:.2}\n", tot_prob);
 
     return best_move as usize;
@@ -587,20 +589,95 @@ fn train_against_random(nn: &mut NeuralNetwork, num_games: u32) {
     }
 }
 
-fn main() {
-    let random_games: u32 = 150000;
+/* Show board on screen in ASCII */
+fn display_board(state: &GameState) {
+    println!("");
+    for row in 0..3 {
+        // Display the board symbols.
+        print!(
+            "{}{}{} ",
+            state.board[row * 3],
+            state.board[row * 3 + 1],
+            state.board[row * 3 + 2]
+        );
 
-    // Init Game State.
-    // let game_state = GameState {
-    //     board: ['.'; BOARD_SIZE], // We use '.' to identify an empty cell.
-    //     current_player: false,    // The humam plays the first move
-    // };
+        // Display the position numbers for this row, for the poor human.
+        println!("{}{}{}", row * 3, row * 3 + 1, row * 3 + 2);
+    }
+    println!("");
+}
+
+fn play_game(nn: &mut NeuralNetwork) {
+    println!("\nWelcome to Tic Tac Toe! You are X, the computer is O.");
+    println!("Enter positions as numbers from 0 to 8 (see picture).");
+
+    let mut state: GameState = GameState {
+        board: ['.'; BOARD_SIZE],
+        current_player: false,
+    };
+
+    let stdin = io::stdin();
+    let mut winner: char = '.';
+    let mut human_move: String;
+    while !is_game_over(&state, &mut winner) {
+        display_board(&state);
+        if state.current_player == false {
+            // Human move
+            human_move = String::new();
+            println!("Your move (0-8): ");
+            stdin.lock().read_line(&mut human_move).unwrap();
+            let input = human_move.trim().parse::<usize>().unwrap();
+
+            if input > 8 || state.board[input] != '.' {
+                println!("Invalid move! Try again.");
+                continue;
+            }
+
+            state.board[input] = 'X';
+        } else {
+            println!("Computer's move: \n");
+            let h_move = play_computer_move(&state, nn, true);
+            state.board[h_move] = 'O';
+            println!("\nComputer's placed O at position: {}:", h_move);
+        }
+        state.current_player = !state.current_player;
+    }
+
+    display_board(&state);
+    if winner == 'X' {
+        println!("You win!");
+    } else if winner == 'O' {
+        println!("Computer wins!");
+    } else {
+        println!("It's a tie!");
+    }
+}
+
+fn main() {
+    let mut random_games: u32 = 150000;
+    let args: Vec<String> = env::args().collect();
+    if args.len() > 1 {
+        random_games = args[1].parse().unwrap();
+    }
 
     // Init NN.
     let mut nn = init_nn();
-
     // Train the NN.
     if random_games > 0 {
         train_against_random(&mut nn, random_games);
+    }
+
+    let stdin = io::stdin();
+    let mut play_again: String;
+    loop {
+        play_again = String::new();
+        play_game(&mut nn);
+
+        println!("\nPlay again? (y/n): ");
+        stdin.lock().read_line(&mut play_again).unwrap();
+        let input = play_again.trim();
+        if input != "y" && input != "Y" {
+            break;
+        }
     }
 }
