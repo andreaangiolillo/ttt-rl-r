@@ -333,7 +333,7 @@ fn learn_from_game(
     nn_moves_even: bool,
     winner: char,
 ) {
-    let mut reward = 0.0;
+    let reward;
     let mut nn_symbol: char = 'X';
     if nn_moves_even {
         // NN started first
