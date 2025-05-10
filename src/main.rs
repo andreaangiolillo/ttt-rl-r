@@ -255,15 +255,14 @@ fn play_computer_move(state: &GameState, nn: &mut NeuralNetwork, display_move: b
 /// if the board is full, but here we want simple code.
 fn play_random_move(state: &GameState) -> usize {
     let mut rng = rand::rng();
-    let mut move_random: usize = 0;
-    while true {
+    let mut move_random: usize;
+    loop {
         let mut rng = rand::thread_rng();
         move_random = rng.gen_range(0..9);
         if state.board[move_random] == '.' {
             return move_random;
         }
     }
-    return move_random;
 }
 
 /* Play a game against random moves and learn from it.
