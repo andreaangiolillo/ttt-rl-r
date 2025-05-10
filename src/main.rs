@@ -49,8 +49,8 @@ fn relu_derivative(x: f64) -> f64 {
 
 /// random_weight returns a random float number to be used to initialize the NN weights.
 fn random_weight() -> f64 {
-    let mut rng = rand::thread_rng();
-    rng.r#gen::<f64>() - 0.5
+    let mut rng = rand::rng();
+    rng.r#random::<f64>() - 0.5
 }
 
 /// Initialize the NN
@@ -257,8 +257,7 @@ fn play_random_move(state: &GameState) -> usize {
     let mut rng = rand::rng();
     let mut move_random: usize;
     loop {
-        let mut rng = rand::thread_rng();
-        move_random = rng.gen_range(0..9);
+        move_random = rng.random_range(0..9);
         if state.board[move_random] == '.' {
             return move_random;
         }
