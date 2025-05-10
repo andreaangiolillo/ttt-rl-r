@@ -218,7 +218,7 @@ fn play_computer_move(state: &GameState, nn: &mut NeuralNetwork, display_move: b
 
     if display_move {
         print!("Neural network move probabilities:\n");
-        let mut pos = 0;
+        let mut pos;
         for row in 0..3 {
             for col in 0..3 {
                 pos = row * 3 + col;
@@ -592,10 +592,10 @@ fn main() {
     let random_games: u32 = 150000;
 
     // Init Game State.
-    let game_state = GameState {
-        board: ['.'; BOARD_SIZE], // We use '.' to identify an empty cell.
-        current_player: false,    // The humam plays the first move
-    };
+    // let game_state = GameState {
+    //     board: ['.'; BOARD_SIZE], // We use '.' to identify an empty cell.
+    //     current_player: false,    // The humam plays the first move
+    // };
 
     // Init NN.
     let mut nn = init_nn();
