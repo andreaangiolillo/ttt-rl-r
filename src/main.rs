@@ -346,9 +346,9 @@ fn learn_from_game(
     if winner == 'T' {
         reward = 0.3; // Small reward for draw
     } else if winner == nn_symbol {
-        reward = 1.0; // Large reward for win
+        reward = 2.0; // Large reward for win
     } else {
-        reward = -2.0; // Negative reward for loss
+        reward = -1.0; // Negative reward for loss
     }
 
     let mut target_probs = [0.0; NN_OUTPUT_SIZE];
