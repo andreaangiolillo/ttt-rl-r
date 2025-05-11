@@ -351,7 +351,6 @@ fn learn_from_game(
     }
 
     let mut target_probs = [0.0; NN_OUTPUT_SIZE];
-    // println!("\n\nWinner: {}", winner);
     // Process each move the nn made.
     for move_idx in 0..*num_moves {
         if (nn_moves_even && move_idx % 2 != 1) || (!nn_moves_even && move_idx % 2 != 0) {
@@ -437,12 +436,8 @@ fn backprop(
     //
     // Is exactly what happens if you derivate the deltas with
     // softmax and cross entropy.
-    //
-    // LEARNING OPPORTUNITY: This is a well established and fundamental
-    // result in neural networks, you may want to read more about it.
     for i in 0..NN_OUTPUT_SIZE {
         output_deltas[i] = (nn.outputs[i] - target_probs[i]) * (libm::fabsf(reward_scaling) as f64);
-        // println!("{}", output_deltas[i]);
     }
 
     // Backpropagate error to hidden layer.
