@@ -3,10 +3,11 @@ use std::env;
 use std::io::{self, BufRead};
 
 /// Neural network parameters.
-const NN_INPUT_SIZE: usize = 18;
-const NN_HIDDEN_SIZE: usize = 100;
-const NN_OUTPUT_SIZE: usize = 9;
-const BOARD_SIZE: usize = 9;
+const ROWS_SIZE: usize = 4;
+const BOARD_SIZE: usize = ROWS_SIZE * ROWS_SIZE;
+const NN_INPUT_SIZE: usize = BOARD_SIZE * 2;
+const NN_HIDDEN_SIZE: usize = 210;
+const NN_OUTPUT_SIZE: usize = ROWS_SIZE * ROWS_SIZE;
 const LEARNING_RATE: f64 = 0.1;
 
 /// Game board structure.
@@ -107,7 +108,7 @@ fn init_nn() -> NeuralNetwork {
 /// exeriment this "permutation coding" that I'm using here.
 ///
 fn board_to_inputs(state: &GameState, inputs: &mut [f64; NN_INPUT_SIZE]) {
-    for i in 0..9 {
+    for i in 0..BOARD_SIZE {
         if state.board[i] == '.' {
             inputs[i * 2] = 0.0;
             inputs[(i * 2) + 1] = 0.0;
@@ -221,9 +222,9 @@ fn play_computer_move(state: &GameState, nn: &mut NeuralNetwork, display_move: b
     if display_move {
         print!("Neural network move probabilities:\n");
         let mut pos;
-        for row in 0..3 {
-            for col in 0..3 {
-                pos = row * 3 + col;
+        for row in 0..ROWS_SIZE {
+            for col in 0..ROWS_SIZE {
+                pos = row * ROWS_SIZE + col;
 
                 // Print probability as percentage.
                 print!("{:.1}%", nn.outputs[pos] * 100.0);
@@ -259,7 +260,7 @@ fn play_random_move(state: &GameState) -> usize {
     let mut rng = rand::rng();
     let mut move_random: usize;
     loop {
-        move_random = rng.random_range(0..9);
+        move_random = rng.random_range(0..BOARD_SIZE);
         if state.board[move_random] == '.' {
             return move_random;
         }
@@ -287,7 +288,7 @@ fn play_random_game(nn: &mut NeuralNetwork) -> char {
     };
 
     let mut winner: char = '.';
-    let mut move_history: [usize; 9] = [0; 9];
+    let mut move_history: [usize; BOARD_SIZE] = [0; BOARD_SIZE];
     let mut num_moves: usize = 0;
     let mut h_move: usize;
     while !is_game_over(&state, &mut winner) {
@@ -330,7 +331,7 @@ fn play_random_game(nn: &mut NeuralNetwork) -> char {
 /// code always let the human move first.
 fn learn_from_game(
     nn: &mut NeuralNetwork,
-    move_history: &[usize; 9],
+    move_history: &[usize; BOARD_SIZE],
     num_moves: &usize,
     nn_moves_even: bool,
     winner: char,
@@ -396,7 +397,7 @@ fn learn_from_game(
             // For negative reward, distribute probability to OTHER
             // valid moves, which is conceptually the same as discouraging
             // the move that we want to discourage.
-            let valid_moves_left = (9 - move_idx - 1) as f64;
+            let valid_moves_left = (BOARD_SIZE - move_idx - 1) as f64;
             let other_prob = 1.0 / valid_moves_left;
             for i in 0..BOARD_SIZE {
                 if state.board[i] == '.' && i != current_move {
@@ -488,49 +489,57 @@ fn backprop(
 /// 3) All the elements in a diagonal are "O" (or "X").
 fn is_game_over(state: &GameState, winner: &mut char) -> bool {
     // Check the rows
-    for i in 0..3 {
-        if state.board[i * 3] == '.' {
+    for i in 0..ROWS_SIZE {
+        if state.board[i * ROWS_SIZE] == '.' {
             continue;
         }
 
-        if state.board[i * 3] == state.board[(i * 3) + 1]
-            && state.board[(i * 3) + 1] == state.board[(i * 3) + 2]
+        if state.board[i * ROWS_SIZE] == state.board[(i * ROWS_SIZE) + 1]
+            && state.board[(i * ROWS_SIZE) + 1] == state.board[(i * ROWS_SIZE) + 2]
+            && state.board[(i * ROWS_SIZE) + 2] == state.board[(i * ROWS_SIZE) + 3]
         {
-            *winner = state.board[i * 3];
+            *winner = state.board[i * ROWS_SIZE];
             return true;
         }
     }
 
     // check the columns
-    for i in 0..3 {
+    for i in 0..ROWS_SIZE {
         if state.board[i] == '.' {
             continue;
         }
 
-        if state.board[i] == state.board[i + 3] && state.board[i + 3] == state.board[i + 6] {
+        if state.board[i] == state.board[i + ROWS_SIZE]
+            && state.board[i + ROWS_SIZE] == state.board[i + ROWS_SIZE * 2]
+            && state.board[i + ROWS_SIZE * 2] == state.board[i + ROWS_SIZE * 3]
+        {
             *winner = state.board[i];
             return true;
         }
     }
 
     // check the diagonals
-    if state.board[4] == '.' {
-        return false;
-    }
-
-    if state.board[0] == state.board[4] && state.board[4] == state.board[8] {
+    if state.board[0] != '.'
+        && state.board[0] == state.board[5]
+        && state.board[5] == state.board[10]
+        && state.board[10] == state.board[15]
+    {
         *winner = state.board[0];
         return true;
     }
 
-    if state.board[2] == state.board[4] && state.board[4] == state.board[6] {
+    if state.board[3] != '.'
+        && state.board[3] == state.board[6]
+        && state.board[6] == state.board[9]
+        && state.board[9] == state.board[12]
+    {
         *winner = state.board[2];
         return true;
     }
 
     // Check for tie (no free tiles left).
     let mut empty_tiles: u8 = 0;
-    for i in 0..9 {
+    for i in 0..BOARD_SIZE {
         if state.board[i] == '.' {
             empty_tiles += 1
         }
@@ -592,24 +601,34 @@ fn train_against_random(nn: &mut NeuralNetwork, num_games: u32) {
 /* Show board on screen in ASCII */
 fn display_board(state: &GameState) {
     println!("");
-    for row in 0..3 {
+    for row in 0..ROWS_SIZE {
         // Display the board symbols.
         print!(
-            "{}{}{} ",
-            state.board[row * 3],
-            state.board[row * 3 + 1],
-            state.board[row * 3 + 2]
+            "{}{}{}{} ",
+            state.board[row * ROWS_SIZE],
+            state.board[row * ROWS_SIZE + 1],
+            state.board[row * ROWS_SIZE + 2],
+            state.board[row * ROWS_SIZE + 3],
         );
 
         // Display the position numbers for this row, for the poor human.
-        println!("{}{}{}", row * 3, row * 3 + 1, row * 3 + 2);
+        println!(
+            "{} {} {} {}",
+            row * ROWS_SIZE,
+            row * ROWS_SIZE + 1,
+            row * ROWS_SIZE + 2,
+            row * ROWS_SIZE + 3
+        );
     }
     println!("");
 }
 
 fn play_game(nn: &mut NeuralNetwork) {
     println!("\nWelcome to Tic Tac Toe! You are X, the computer is O.");
-    println!("Enter positions as numbers from 0 to 8 (see picture).");
+    println!(
+        "Enter positions as numbers from 0 to {} (see picture).",
+        BOARD_SIZE - 1
+    );
 
     let mut state: GameState = GameState {
         board: ['.'; BOARD_SIZE],
@@ -624,11 +643,11 @@ fn play_game(nn: &mut NeuralNetwork) {
         if state.current_player == false {
             // Human move
             human_move = String::new();
-            println!("Your move (0-8): ");
+            println!("Your move (0-{}): ", BOARD_SIZE - 1);
             stdin.lock().read_line(&mut human_move).unwrap();
             let input = human_move.trim().parse::<usize>().unwrap();
 
-            if input > 8 || state.board[input] != '.' {
+            if input > BOARD_SIZE - 1 || state.board[input] != '.' {
                 println!("Invalid move! Try again.");
                 continue;
             }
