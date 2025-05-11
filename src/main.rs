@@ -673,7 +673,7 @@ fn play_game(nn: &mut NeuralNetwork) {
 }
 
 fn main() {
-    let mut random_games: u32 = 150000;
+    let mut random_games: u32 = 250000;
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
         random_games = args[1].parse().unwrap();
