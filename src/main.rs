@@ -533,7 +533,7 @@ fn is_game_over(state: &GameState, winner: &mut char) -> bool {
         && state.board[6] == state.board[9]
         && state.board[9] == state.board[12]
     {
-        *winner = state.board[2];
+        *winner = state.board[3];
         return true;
     }
 
