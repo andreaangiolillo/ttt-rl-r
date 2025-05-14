@@ -15,7 +15,10 @@ fn play_game(
         random_games
     );
 
-    let mut state = nn_one_hidden_layer::GameState {
+    const ROWS_SIZE: usize = 4;
+    const BOARD_SIZE: usize = ROWS_SIZE * ROWS_SIZE;
+
+    let mut state: nn_one_hidden_layer::GameState = nn_one_hidden_layer::GameState {
         board: ['.'; BOARD_SIZE],
         current_player: false,
     };
@@ -32,7 +35,8 @@ fn play_game(
                 let h_move = nn_one_hidden_layer::play_computer_move(&state, one_layer_nn, false);
                 state.board[h_move] = 'X';
             } else {
-                let h_move = nn_two_hidden_layers::play_computer_move_nn(&state, two_layers_nn, false);
+                let h_move =
+                    nn_two_hidden_layers::play_computer_move_nn(&state, two_layers_nn, false);
                 state.board[h_move] = 'O';
             }
             state.current_player = !state.current_player;
